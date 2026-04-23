@@ -1,95 +1,84 @@
 /**
- * index.ts  — MCP server entry point
+ * index.ts — MCP server entry point
  *
- * Transport: Streamable HTTP (the modern MCP transport for remote servers)
- * Port:      8000  — the path AgentCore Runtime expects: 0.0.0.0:8000/mcp
+ * This is the ONLY file that knows which repository implementation is used.
+ * Switch DB backend by changing one line:
  *
- * Run locally:
- *   npm run seed   (first time only)
- *   npm run dev    (tsx watch, hot-reload)
- *
- * The server exposes three tools:
- *   - get_customer_profile
- *   - check_warranty_status
- *   - create_support_ticket
+ *   createSqliteRepositories()   ← local dev, no AWS needed
+ *   createDynamoRepositories()   ← production, needs .env + Terraform
  */
+
+import "dotenv/config";
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { mkdirSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
 import http from "http";
 
-import { initDb } from "./utils/db.js";
+import { createSqliteRepositories, createDynamoRepositories } from "./repositories/index.js";
 import { registerGetCustomerProfile } from "./tools/getCustomerProfile.js";
 import { registerCheckWarrantyStatus } from "./tools/checkWarrantyStatus.js";
 import { registerCreateSupportTicket } from "./tools/createSupportTicket.js";
+import { registerGetTicketsByCustomer } from "./tools/getTicketsByCustomer.js";
+import { registerIdentifySession } from "./tools/identifySession.js";
+import { registerGetSessionContext } from "./tools/getSessionContext.js";
+import { registerSaveNote } from "./tools/saveNote.js";
+import { RamMemoryStore } from "./memory/index.js";
 
-// ─── Bootstrap DB ─────────────────────────────────────────────────────────────
+// ─── Choose your backend here ─────────────────────────────────────────────────
+//
+//  "sqlite"  → local file, no AWS, good for development
+//  "dynamo"  → AWS DynamoDB, needs .env populated from terraform output
+//
+const BACKEND = process.env.DB_BACKEND ?? "sqlite";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-mkdirSync(join(__dirname, "../data"), { recursive: true });
-initDb();
+const repos = BACKEND === "dynamo"
+    ? createDynamoRepositories()
+    : createSqliteRepositories();
 
-// ─── Create MCP server ────────────────────────────────────────────────────────
+console.log(`📦 Repository backend: ${BACKEND}`);
+
+// ─── MCP server ───────────────────────────────────────────────────────────────
 
 const server = new McpServer({
     name: "customer-support-mcp",
-    version: "1.0.0",
+    version: "3.0.0",
 });
 
-// Register all tools
-registerGetCustomerProfile(server);
-registerCheckWarrantyStatus(server);
-registerCreateSupportTicket(server);
+const memoryStore = new RamMemoryStore();
+
+// Each tool receives only the repositories it actually needs
+registerGetCustomerProfile(server, repos.customers, repos.products);
+registerCheckWarrantyStatus(server, repos.products);
+registerCreateSupportTicket(server, repos.customers, repos.products, repos.tickets);
+registerGetTicketsByCustomer(server, repos.customers, repos.tickets);
+
+// Session memory tools
+registerIdentifySession(server, memoryStore);
+registerGetSessionContext(server, memoryStore);
+registerSaveNote(server, memoryStore);
 
 // ─── HTTP transport ───────────────────────────────────────────────────────────
-// Streamable HTTP is the recommended transport for remote/hosted MCP servers.
-// AgentCore Runtime expects the server at 0.0.0.0:8000/mcp — we match that.
 
 const PORT = parseInt(process.env.PORT ?? "8000", 10);
 
 const httpServer = http.createServer(async (req, res) => {
-    // Only handle POST /mcp — everything else returns 404
-    if (req.url !== "/mcp") {
-        res.writeHead(404).end("Not found");
-        return;
-    }
-    if (req.method !== "POST") {
-        res.writeHead(405).end("Method not allowed");
-        return;
-    }
+    if (req.url !== "/mcp") { res.writeHead(404).end("Not found"); return; }
+    if (req.method !== "POST") { res.writeHead(405).end("Method not allowed"); return; }
 
-    // Read the full body
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(chunk);
     const body = Buffer.concat(chunks).toString("utf-8");
 
-    // One transport instance per request (stateless mode)
-    const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: undefined, // stateless — no session header needed
-    });
-
-    // Wire transport → server, handle the request, then close
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     await server.connect(transport);
     await transport.handleRequest(req, res, JSON.parse(body));
     await transport.close();
 });
 
 httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`\n🚀 Customer Support MCP Server`);
-    console.log(`   Listening on http://0.0.0.0:${PORT}/mcp`);
-    console.log(`\n   Tools available:`);
-    console.log(`     • get_customer_profile`);
-    console.log(`     • check_warranty_status`);
-    console.log(`     • create_support_ticket`);
-    console.log(`\n   Run "npm run seed" first if you haven't already.\n`);
+    console.log(`🚀 Customer Support MCP Server`);
+    console.log(`   Backend:   ${BACKEND}`);
+    console.log(`   Listening: http://0.0.0.0:${PORT}/mcp\n`);
 });
 
-// Graceful shutdown
-process.on("SIGINT", () => {
-    console.log("\nShutting down...");
-    httpServer.close();
-    process.exit(0);
-});
+process.on("SIGINT", () => { httpServer.close(); process.exit(0); });

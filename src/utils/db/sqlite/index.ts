@@ -3,25 +3,25 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = join(__dirname, "../../data/support.db");
+const DB_PATH = join(__dirname, "../../../../data/support.db");
 
 // ─── Singleton connection ────────────────────────────────────────────────────
 
 let _db: Database.Database | null = null;
 
 export const getDb: () => Database.Database = () => {
-    if (!_db) {
-        _db = new Database(DB_PATH);
-        _db.pragma("journal_mode = WAL"); // better concurrent read performance
-        _db.pragma("foreign_keys = ON");
-    }
-    return _db;
+  if (!_db) {
+    _db = new Database(DB_PATH);
+    _db.pragma("journal_mode = WAL"); // better concurrent read performance
+    _db.pragma("foreign_keys = ON");
+  }
+  return _db;
 }
 
 export const initDb: () => void = () => {
-    const db = getDb();
+  const db = getDb();
 
-    db.exec(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS customers (
       id            TEXT PRIMARY KEY,
       name          TEXT NOT NULL,

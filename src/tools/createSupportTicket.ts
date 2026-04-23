@@ -13,10 +13,15 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { randomUUID } from "crypto";
-import { getCustomerById, getProductById, createTicket } from "../repositories/index.js";
+import { ICustomerRepository, IProductRepository, ITicketRepository } from "../repositories/index.ts";
 import { TicketPrioritySchema, TicketStatusSchema } from "../models/index.js";
 
-export function registerCreateSupportTicket(server: McpServer): void {
+export function registerCreateSupportTicket(
+    server: McpServer,
+    customerRepo: ICustomerRepository,
+    productRepo: IProductRepository,
+    ticketRepo: ITicketRepository
+): void {
     server.registerTool(
         "create_support_ticket",
         {
@@ -51,7 +56,7 @@ export function registerCreateSupportTicket(server: McpServer): void {
         },
         async ({ customerId, productId, subject, description, priority }) => {
             // 1. Verify customer exists
-            const customer = getCustomerById(customerId);
+            const customer = await customerRepo.getById(customerId);
             if (!customer) {
                 return {
                     content: [
@@ -66,7 +71,7 @@ export function registerCreateSupportTicket(server: McpServer): void {
 
             // 2. If a product was provided, verify it exists AND belongs to this customer
             if (productId !== undefined) {
-                const product = getProductById(productId);
+                const product = await productRepo.getById(productId);
                 if (!product) {
                     return {
                         content: [
@@ -93,7 +98,7 @@ export function registerCreateSupportTicket(server: McpServer): void {
 
             // 3. Create the ticket
             const now = new Date().toISOString();
-            const ticket = createTicket({
+            const ticket = await ticketRepo.create({
                 id: randomUUID(),
                 customerId,
                 productId,

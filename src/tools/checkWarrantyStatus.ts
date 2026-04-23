@@ -11,10 +11,13 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getProductById } from "../repositories/index.js";
+import { IProductRepository } from "../repositories/index.ts";
 import { computeWarrantyStatus } from "../utils/warranty.js";
 
-export function registerCheckWarrantyStatus(server: McpServer): void {
+export function registerCheckWarrantyStatus(
+    server: McpServer,
+    productRepo: IProductRepository
+): void {
     server.registerTool(
         "check_warranty_status",
         {
@@ -26,7 +29,7 @@ export function registerCheckWarrantyStatus(server: McpServer): void {
             },
         },
         async ({ productId }) => {
-            const product = getProductById(productId);
+            const product = await productRepo.getById(productId);
 
             if (!product) {
                 return {

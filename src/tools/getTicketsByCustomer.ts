@@ -1,39 +1,38 @@
 /**
- * tools/getCustomerProfile.ts
+ * tools/getTicketsByCustomer.ts
  *
- * MCP tool: get_customer_profile
+ * MCP tool: get_tickets_by_customer
  *
  * Accepts EITHER a customer `id` (UUID) OR an `email`. Exactly one must be
- * provided. Also returns all products owned by that customer.
+ * provided. Also returns all tickets associated with that customer.
  *
  * Phase 2 change: swap `getCustomerById` / `getCustomerByEmail` /
- * `getProductsByCustomerId` with DynamoDB equivalents. Everything else stays.
+ * `getTicketsByCustomerId` with DynamoDB equivalents. Everything else stays.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { InputSchema, ParsedInputSchema, InputType } from "./types.ts";
+import { InputSchema, InputType } from "./types.ts";
 import {
     ICustomerRepository,
-    IProductRepository,
+    ITicketRepository,
 } from "../repositories/index.ts";
 
-
-export function registerGetCustomerProfile(
+export function registerGetTicketsByCustomer(
     server: McpServer,
     customerRepo: ICustomerRepository,
-    productRepo: IProductRepository
+    ticketRepo: ITicketRepository
 ): void {
     server.registerTool(
-        "get_customer_profile",
+        "get_tickets_by_customer",
         {
-            title: "Get Customer Profile",
+            title: "Get Tickets by Customer",
             description:
-                "Look up a customer by their UUID or email address. Returns profile details and a list of their registered products.",
+                "Look up a customer by their UUID or email address and return a list of their support tickets.",
             inputSchema: InputSchema,
         },
         async (input: InputType) => {
             // Validate with the refined schema (requires at least one field)
-            const parsed = ParsedInputSchema.safeParse(input);
+            const parsed = InputSchema.safeParse(input);
             if (!parsed.success) {
                 return {
                     content: [
@@ -65,19 +64,17 @@ export function registerGetCustomerProfile(
                 };
             }
 
-            const products = await productRepo.getByCustomerId(customer.id);
-
-            const result = {
-                customer,
-                products,
-                productCount: products.length,
-            };
+            const tickets = await ticketRepo.getByCustomerId(customer.id);
 
             return {
                 content: [
                     {
                         type: "text",
-                        text: JSON.stringify(result, null, 2),
+                        text: `Customer "${customer.name}" has ${tickets.length} ticket(s):\n\n${JSON.stringify(
+                            tickets,
+                            null,
+                            2
+                        )}`,
                     },
                 ],
             };
