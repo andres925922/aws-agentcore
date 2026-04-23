@@ -12,12 +12,14 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { initDb } from "./index.ts";
 import { seedCustomer, seedProduct } from "../../../repositories/sqliteRepository.ts";
+import { createSqliteMemoryConnection } from "../../../memory/sqliteStore.ts";
 import { customers, products } from "../data/seedData.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 mkdirSync(join(__dirname, "../../../../data"), { recursive: true });
 
 initDb();
+createSqliteMemoryConnection(); // ensure memory.db is created
 
 for (const c of customers) seedCustomer(c);
 for (const p of products) seedProduct(p);

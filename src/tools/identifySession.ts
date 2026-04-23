@@ -1,19 +1,18 @@
 /**
- * tools/identifySession.ts
+ * tools/identifySession.ts — v2
  *
- * tool: identify_session
+ * Identity resolution strategy:
+ *  - Local dev:    reads $USER from the server process env (your OS user)
+ *  - Production:  inject USER=<corporate-id> as an env var in AgentCore
+ *                 Runtime config (scripts/deploy.sh environment-variables)
  *
- * Reads the OS username from the server process environment ($USER).
- * The agent should call this at the start of every conversation.
- * Returns the full UserMemory so the agent has immediate context.
- *
- * Why server-side $USER and not client-side?
- * Because this MCP server runs as a local process on YOUR machine.
- * process.env.USER is YOUR OS user — no spoofing needed for local dev.
+ * This keeps the tool simple and avoids fighting the SDK's header API.
+ * When you need JWT-based auth, replace resolveUser() — nothing else changes.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { IMemoryStore } from "../memory/index.js";
+import { resolveUser } from "../utils/resolveUser.js";
 
 export function registerIdentifySession(
     server: McpServer,
@@ -24,34 +23,27 @@ export function registerIdentifySession(
         {
             title: "Identify Session",
             description:
-                "Call this at the start of every conversation. Reads the OS user running the MCP server, creates or retrieves their session memory, and returns their full context (preferences, last customer, notes, recent tickets). No input needed.",
+                "Call this at the start of every conversation. Resolves the caller's identity from the USER environment variable (set automatically from OS locally, or injected by AgentCore in production). Creates or retrieves their full session memory.",
             inputSchema: {},
         },
         async () => {
-            // Read OS username from the server process — this is YOUR machine
-            const osUsername = process.env.USER
-                ?? process.env.USERNAME   // Windows fallback
-                ?? "unknown";
+            const { userId, osUsername } = resolveUser();
 
-            const memory = await memoryStore.getOrCreate(osUsername);
-
-            // Update lastActiveAt
+            const memory = await memoryStore.getOrCreate(userId, osUsername);
             memory.user.lastActiveAt = new Date().toISOString();
             await memoryStore.save(memory);
 
-            const isReturning = memory.notes.length > 0
-                || memory.lastCustomerContext !== null
-                || memory.recentTicketIds.length > 0;
+            const isReturning =
+                memory.notes.length > 0 ||
+                memory.lastCustomerContext !== null ||
+                memory.recentTickets.length > 0;
 
             const greeting = isReturning
-                ? `Welcome back, ${osUsername}. I found your previous session context.`
-                : `Hello ${osUsername}, this is your first session. Starting fresh.`;
+                ? `Welcome back, ${userId}. Previous session context loaded.`
+                : `Hello ${userId}, first session — starting fresh.`;
 
             return {
-                content: [{
-                    type: "text",
-                    text: `${greeting}\n\n${JSON.stringify(memory, null, 2)}`,
-                }],
+                content: [{ type: "text", text: `${greeting}\n\n${JSON.stringify(memory, null, 2)}` }],
             };
         }
     );

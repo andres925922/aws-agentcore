@@ -1,18 +1,7 @@
-/**
- * tools/saveNote.ts
- *
- * tool: save_note
- *
- * Lets the agent persist free-form notes and structured context
- * (preferences, last customer) for the current OS user.
- *
- * The agent decides when to call this — e.g. after looking up a customer,
- * after the user expresses a preference, after creating a ticket.
- */
-
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { IMemoryStore } from "../memory/index.js";
+import { IMemoryStore, TTL_DAYS, expiresAt } from "../memory/index.js";
+import { resolveUser } from "../utils/resolveUser.js";
 
 export function registerSaveNote(
     server: McpServer,
@@ -23,24 +12,22 @@ export function registerSaveNote(
         {
             title: "Save Note",
             description:
-                "Persist information to the current user's memory. Use `note` for free-form text. Use `customerContext` when you've just looked up a customer so it can be recalled later. Use `preferences` when the user expresses language or tone preferences. Use `ticketId` after creating a ticket.",
+                "Persist information to the current user's memory. Use `note` for free-form text. Use `customerContext` after looking up a customer. Use `preferences` when the user expresses language or tone preferences. Use `ticket` after creating a ticket.",
             inputSchema: {
-                note: z
-                    .string()
+                note: z.string().optional().describe("Free-form text to remember across sessions"),
+                ticket: z
+                    .object({
+                        ticketId: z.string().uuid(),
+                        subject: z.string().describe("Short summary — helps recall later"),
+                    })
                     .optional()
-                    .describe("Free-form text to remember across sessions"),
-                ticketId: z
-                    .string()
-                    .uuid()
-                    .optional()
-                    .describe("Ticket ID to add to the user's recent tickets list"),
+                    .describe("Ticket reference to add to recent tickets"),
                 preferences: z
                     .object({
                         language: z.string().optional().describe("e.g. 'es' or 'en'"),
                         tone: z.enum(["formal", "casual"]).optional(),
                     })
-                    .optional()
-                    .describe("Update user preferences"),
+                    .optional(),
                 customerContext: z
                     .object({
                         customerId: z.string().uuid(),
@@ -51,27 +38,28 @@ export function registerSaveNote(
                     .describe("Save the customer currently being worked with"),
             },
         },
-        async ({ note, ticketId, preferences, customerContext }) => {
-            const osUsername = process.env.USER ?? process.env.USERNAME ?? "unknown";
-            const memory = await memoryStore.getOrCreate(osUsername);
+        async ({ note, ticket, preferences, customerContext }) => {
+            const { userId, osUsername } = resolveUser();
+            const memory = await memoryStore.getOrCreate(userId, osUsername);
             const saved: string[] = [];
 
             if (note) {
-                memory.notes.push({ text: note, savedAt: new Date().toISOString() });
-                // Keep only the last 20 notes to avoid unbounded growth
+                memory.notes.push({ text: note, savedAt: new Date().toISOString(), expiresAt: expiresAt(TTL_DAYS.notes) });
                 if (memory.notes.length > 20) memory.notes = memory.notes.slice(-20);
                 saved.push("note");
             }
 
-            if (ticketId) {
-                if (!memory.recentTicketIds.includes(ticketId)) {
-                    memory.recentTicketIds.unshift(ticketId);
-                    // Keep only the last 50 ticket IDs
-                    if (memory.recentTicketIds.length > 50) {
-                        memory.recentTicketIds = memory.recentTicketIds.slice(0, 50);
-                    }
+            if (ticket) {
+                if (!memory.recentTickets.some((t) => t.ticketId === ticket.ticketId)) {
+                    memory.recentTickets.unshift({
+                        ticketId: ticket.ticketId,
+                        subject: ticket.subject,
+                        savedAt: new Date().toISOString(),
+                        expiresAt: expiresAt(TTL_DAYS.tickets),
+                    });
+                    if (memory.recentTickets.length > 50) memory.recentTickets = memory.recentTickets.slice(0, 50);
                 }
-                saved.push("ticketId");
+                saved.push("ticket");
             }
 
             if (preferences) {
@@ -81,10 +69,7 @@ export function registerSaveNote(
             }
 
             if (customerContext) {
-                memory.lastCustomerContext = {
-                    ...customerContext,
-                    lastAccessedAt: new Date().toISOString(),
-                };
+                memory.lastCustomerContext = { ...customerContext, lastAccessedAt: new Date().toISOString() };
                 saved.push("customerContext");
             }
 
@@ -94,9 +79,7 @@ export function registerSaveNote(
             return {
                 content: [{
                     type: "text",
-                    text: saved.length > 0
-                        ? `✅ Saved to memory: ${saved.join(", ")}`
-                        : "Nothing to save — no fields provided.",
+                    text: saved.length > 0 ? `Saved to memory: ${saved.join(", ")}` : "Nothing to save — no fields provided.",
                 }],
             };
         }

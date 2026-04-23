@@ -3,3 +3,19 @@ data/*
 node_modules/*
 dist/*
 **/dist/*
+
+# Python
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+**/.env/
+**/.venv/
+**/env/
+**/venv/
+**/ENV/
+**/venv.bak/   

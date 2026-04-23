@@ -1,11 +1,16 @@
 /**
  * index.ts — MCP server entry point
  *
- * This is the ONLY file that knows which repository implementation is used.
- * Switch DB backend by changing one line:
+ * Controls two independent concerns via env vars:
  *
- *   createSqliteRepositories()   ← local dev, no AWS needed
- *   createDynamoRepositories()   ← production, needs .env + Terraform
+ *   DB_BACKEND=sqlite|dynamo        where customer/product/ticket data lives
+ *   MEMORY_BACKEND=ram|sqlite|dynamo where session memory lives
+ *
+ * Production recommended:
+ *   DB_BACKEND=dynamo MEMORY_BACKEND=dynamo
+ *
+ * Local dev:
+ *   DB_BACKEND=sqlite MEMORY_BACKEND=sqlite
  */
 
 import "dotenv/config";
@@ -15,42 +20,42 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import http from "http";
 
 import { createSqliteRepositories, createDynamoRepositories } from "./repositories/index.js";
+import {
+    RamMemoryStore,
+    createSqliteMemoryStore,
+    createDynamoMemoryStore,
+} from "./memory/index.js";
+
 import { registerGetCustomerProfile } from "./tools/getCustomerProfile.js";
 import { registerCheckWarrantyStatus } from "./tools/checkWarrantyStatus.js";
 import { registerCreateSupportTicket } from "./tools/createSupportTicket.js";
-import { registerGetTicketsByCustomer } from "./tools/getTicketsByCustomer.js";
 import { registerIdentifySession } from "./tools/identifySession.js";
 import { registerGetSessionContext } from "./tools/getSessionContext.js";
 import { registerSaveNote } from "./tools/saveNote.js";
-import { RamMemoryStore } from "./memory/index.js";
 
-// ─── Choose your backend here ─────────────────────────────────────────────────
-//
-//  "sqlite"  → local file, no AWS, good for development
-//  "dynamo"  → AWS DynamoDB, needs .env populated from terraform output
-//
-const BACKEND = process.env.DB_BACKEND ?? "sqlite";
+// ─── Repository backend ───────────────────────────────────────────────────────
 
-const repos = BACKEND === "dynamo"
+const DB_BACKEND = process.env.DB_BACKEND ?? "sqlite";
+const repos = DB_BACKEND === "dynamo"
     ? createDynamoRepositories()
     : createSqliteRepositories();
 
-console.log(`📦 Repository backend: ${BACKEND}`);
+// ─── Memory backend ───────────────────────────────────────────────────────────
+
+const MEMORY_BACKEND = process.env.MEMORY_BACKEND ?? "ram";
+const memoryStore =
+    MEMORY_BACKEND === "dynamo" ? createDynamoMemoryStore() :
+        MEMORY_BACKEND === "sqlite" ? createSqliteMemoryStore() :
+            new RamMemoryStore();
 
 // ─── MCP server ───────────────────────────────────────────────────────────────
 
-const server = new McpServer({
-    name: "customer-support-mcp",
-    version: "3.0.0",
-});
+const server = new McpServer({ name: "customer-support-mcp", version: "4.0.0" });
 
-const memoryStore = new RamMemoryStore();
-
-// Each tool receives only the repositories it actually needs
+// Customer data tools
 registerGetCustomerProfile(server, repos.customers, repos.products);
 registerCheckWarrantyStatus(server, repos.products);
 registerCreateSupportTicket(server, repos.customers, repos.products, repos.tickets);
-registerGetTicketsByCustomer(server, repos.customers, repos.tickets);
 
 // Session memory tools
 registerIdentifySession(server, memoryStore);
@@ -76,9 +81,10 @@ const httpServer = http.createServer(async (req, res) => {
 });
 
 httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`🚀 Customer Support MCP Server`);
-    console.log(`   Backend:   ${BACKEND}`);
-    console.log(`   Listening: http://0.0.0.0:${PORT}/mcp\n`);
+    console.log(`\n🚀 Customer Support MCP Server v4`);
+    console.log(`   DB backend:     ${DB_BACKEND}`);
+    console.log(`   Memory backend: ${MEMORY_BACKEND}`);
+    console.log(`   Listening:      http://0.0.0.0:${PORT}/mcp\n`);
 });
 
 process.on("SIGINT", () => { httpServer.close(); process.exit(0); });

@@ -1,26 +1,22 @@
 /**
  * memory/types.ts
  *
- * Types for the in-memory session and user context store.
- * No DB-specific types here — just domain concepts.
- *
- * When you want to persist to SQLite or DynamoDB later, you implement
- * IMemoryStore with those backends. Nothing else changes.
+ * Domain types for session memory.
+ * v2: adds userId (corporate/email ID) separate from osUsername,
+ *     and expiresAt on notes and recentTickets for TTL-aware cleanup.
  */
 
-// ─── Domain types ─────────────────────────────────────────────────────────────
-
 export interface AgentUser {
-    /** OS username ($USER / whoami) */
+    /** Corporate or email ID — primary identifier in production */
+    userId: string;
+    /** OS username — used as fallback when no X-User-Id header is present */
     osUsername: string;
-    /** When we first saw this user in this server process */
     firstSeenAt: string;
-    /** Last time any tool was called for this user */
     lastActiveAt: string;
 }
 
 export interface UserPreferences {
-    language: string;       // e.g. "es", "en"
+    language: string;
     tone: "formal" | "casual";
 }
 
@@ -31,24 +27,59 @@ export interface CustomerContext {
     lastAccessedAt: string;
 }
 
+export interface TimestampedNote {
+    text: string;
+    savedAt: string;
+    /** ISO-8601 — filtered out on read when past this date */
+    expiresAt: string;
+}
+
+export interface RecentTicket {
+    ticketId: string;
+    subject: string;
+    savedAt: string;
+    /** ISO-8601 — filtered out on read when past this date */
+    expiresAt: string;
+}
+
 export interface UserMemory {
     user: AgentUser;
     preferences: UserPreferences;
-    /** The last customer this agent user was working with */
     lastCustomerContext: CustomerContext | null;
-    /** Free-form notes the agent can write and read back */
-    notes: Array<{ text: string; savedAt: string }>;
-    /** Ticket IDs created during any session for this user */
-    recentTicketIds: string[];
+    notes: TimestampedNote[];
+    recentTickets: RecentTicket[];
 }
 
 // ─── Repository interface ─────────────────────────────────────────────────────
 
 export interface IMemoryStore {
-    /** Get or create a UserMemory entry for this OS user */
-    getOrCreate(osUsername: string): Promise<UserMemory>;
-    /** Persist the full UserMemory back (overwrite) */
+    getOrCreate(userId: string, osUsername?: string): Promise<UserMemory>;
     save(memory: UserMemory): Promise<void>;
-    /** Convenience: update only lastActiveAt */
-    touch(osUsername: string): Promise<void>;
+    touch(userId: string): Promise<void>;
+}
+
+// ─── TTL helpers ──────────────────────────────────────────────────────────────
+
+export const TTL_DAYS = {
+    notes: 30,   // notes expire after 30 days
+    tickets: 90,   // ticket references expire after 90 days
+} as const;
+
+export function expiresAt(days: number): string {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    return d.toISOString();
+}
+
+export function isExpired(isoDate: string): boolean {
+    return new Date(isoDate) < new Date();
+}
+
+/** Strip expired notes and tickets from a UserMemory before returning it */
+export function pruneExpired(memory: UserMemory): UserMemory {
+    return {
+        ...memory,
+        notes: memory.notes.filter((n) => !isExpired(n.expiresAt)),
+        recentTickets: memory.recentTickets.filter((t) => !isExpired(t.expiresAt)),
+    };
 }
