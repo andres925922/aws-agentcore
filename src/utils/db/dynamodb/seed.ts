@@ -9,8 +9,8 @@
  */
 
 import "dotenv/config";
-import { seedCustomer, seedProduct } from "../../../repositories/dynamoRepository.ts";
-import { customers, products } from "../data/seedData.ts";
+import { seedCustomer, seedProduct } from "../../../repositories/dynamoRepository.js";
+import { customers, products } from "../data/seedData.js";
 
 console.log("Seeding DynamoDB tables...\n");
 

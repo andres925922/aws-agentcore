@@ -10,10 +10,10 @@
 import { mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { initDb } from "./index.ts";
-import { seedCustomer, seedProduct } from "../../../repositories/sqliteRepository.ts";
-import { createSqliteMemoryConnection } from "../../../memory/sqliteStore.ts";
-import { customers, products } from "../data/seedData.ts";
+import { initDb } from "./index.js";
+import { seedCustomer, seedProduct } from "../../../repositories/sqliteRepository.js";
+import { createSqliteMemoryConnection } from "../../../memory/sqliteStore.js";
+import { customers, products } from "../data/seedData.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 mkdirSync(join(__dirname, "../../../../data"), { recursive: true });

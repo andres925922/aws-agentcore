@@ -4,7 +4,7 @@
  * Pure function — no I/O, no dependencies beyond models. Easy to unit-test.
  */
 
-import { Product, WarrantyStatus } from "../models/index.ts";
+import { Product, WarrantyStatus } from "../models/index.js";
 
 export function computeWarrantyStatus(product: Product): WarrantyStatus {
     const purchaseMs = new Date(product.purchaseDate).getTime();

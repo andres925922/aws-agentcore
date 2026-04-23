@@ -1,8 +1,8 @@
 .vscode
-data/*
-node_modules/*
-dist/*
-**/dist/*
+data
+node_modules
+dist
+**/dist
 
 # Python
 **/__pycache__/
@@ -13,9 +13,22 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-**/.env/
-**/.venv/
-**/env/
-**/venv/
-**/ENV/
-**/venv.bak/   
+.env
+.env/
+.venv/
+env/
+venv/
+ENV/
+venv.bak/   
+
+# Terraform
+**/.terraform/
+**/.terraform.lock.hcl
+**/terraform.tfstate
+**/terraform.tfstate.backup
+**/override.tf
+**/override.tf.json
+**/*_override.tf
+**/*_override.tf.json
+**/.terraformrc
+**/terraform.rc 

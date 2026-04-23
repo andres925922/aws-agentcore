@@ -17,3 +17,21 @@ variable "environment" {
   type        = string
   default     = "dev"
 }
+
+variable "enable_point_in_time_recovery" {
+  description = "Enable DynamoDB point-in-time recovery"
+  type        = bool
+  default     = true
+}
+
+variable "enable_deletion_protection" {
+  description = "Enable DynamoDB deletion protection"
+  type        = bool
+  default     = false
+}
+
+variable "cloudwatch_log_retention_days" {
+  description = "Retention period (days) for AgentCore CloudWatch logs"
+  type        = number
+  default     = 30
+}

@@ -32,14 +32,4 @@ resource "aws_ecr_lifecycle_policy" "mcp_server" {
   })
 }
 
-output "ecr_repository_url" {
-  description = "ECR URL — use this in the deploy script"
-  value       = aws_ecr_repository.mcp_server.repository_url
-}
-
-output "ecr_registry" {
-  description = "Registry hostname for docker login"
-  value       = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
-}
-
 data "aws_caller_identity" "current" {}

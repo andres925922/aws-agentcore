@@ -11,11 +11,11 @@
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { InputSchema, ParsedInputSchema, InputType } from "./types.ts";
+import { InputSchema, ParsedInputSchema, InputType } from "./types.js";
 import {
     ICustomerRepository,
     IProductRepository,
-} from "../repositories/index.ts";
+} from "../repositories/index.js";
 
 
 export function registerGetCustomerProfile(

@@ -23,6 +23,14 @@ terraform {
 
 provider "aws" {
   region = var.aws_region
+
+  default_tags {
+    tags = {
+      Project     = var.project_name
+      Environment = var.environment
+      ManagedBy   = "terraform"
+    }
+  }
 }
 
 # ─── Local helpers ────────────────────────────────────────────────────────────
@@ -44,9 +52,10 @@ locals {
 #               without a full table scan
 
 resource "aws_dynamodb_table" "customers" {
-  name         = "${local.prefix}-customers"
-  billing_mode = "PAY_PER_REQUEST" # no capacity planning needed for dev/phase2
-  hash_key     = "id"
+  name                        = "${local.prefix}-customers"
+  billing_mode                = "PAY_PER_REQUEST" # no capacity planning needed for dev/phase2
+  hash_key                    = "id"
+  deletion_protection_enabled = var.enable_deletion_protection
 
   attribute {
     name = "id"
@@ -65,6 +74,14 @@ resource "aws_dynamodb_table" "customers" {
     projection_type = "ALL" # return full item, not just keys
   }
 
+  server_side_encryption {
+    enabled = true
+  }
+
+  point_in_time_recovery {
+    enabled = var.enable_point_in_time_recovery
+  }
+
   tags = local.common_tags
 }
 
@@ -74,9 +91,10 @@ resource "aws_dynamodb_table" "customers" {
 # GSI         : customerId-index — lets us fetch all products for a customer
 
 resource "aws_dynamodb_table" "products" {
-  name         = "${local.prefix}-products"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "id"
+  name                        = "${local.prefix}-products"
+  billing_mode                = "PAY_PER_REQUEST"
+  hash_key                    = "id"
+  deletion_protection_enabled = var.enable_deletion_protection
 
   attribute {
     name = "id"
@@ -92,6 +110,14 @@ resource "aws_dynamodb_table" "products" {
     name            = "customerId-index"
     hash_key        = "customerId"
     projection_type = "ALL"
+  }
+
+  server_side_encryption {
+    enabled = true
+  }
+
+  point_in_time_recovery {
+    enabled = var.enable_point_in_time_recovery
   }
 
   tags = local.common_tags
@@ -103,9 +129,10 @@ resource "aws_dynamodb_table" "products" {
 # GSI         : customerId-index — fetch all tickets for a customer
 
 resource "aws_dynamodb_table" "tickets" {
-  name         = "${local.prefix}-tickets"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "id"
+  name                        = "${local.prefix}-tickets"
+  billing_mode                = "PAY_PER_REQUEST"
+  hash_key                    = "id"
+  deletion_protection_enabled = var.enable_deletion_protection
 
   attribute {
     name = "id"
@@ -121,6 +148,14 @@ resource "aws_dynamodb_table" "tickets" {
     name            = "customerId-index"
     hash_key        = "customerId"
     projection_type = "ALL"
+  }
+
+  server_side_encryption {
+    enabled = true
+  }
+
+  point_in_time_recovery {
+    enabled = var.enable_point_in_time_recovery
   }
 
   tags = local.common_tags
@@ -156,6 +191,19 @@ resource "aws_iam_policy" "mcp_server" {
           "${aws_dynamodb_table.customers.arn}/index/*",
           "${aws_dynamodb_table.products.arn}/index/*",
           "${aws_dynamodb_table.tickets.arn}/index/*",
+        ]
+      }
+      ,
+      {
+        Sid    = "MemoryTableAccess"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+        ]
+        Resource = [
+          aws_dynamodb_table.memory.arn,
         ]
       }
     ]

@@ -13,7 +13,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { randomUUID } from "crypto";
-import { ICustomerRepository, IProductRepository, ITicketRepository } from "../repositories/index.ts";
+import { ICustomerRepository, IProductRepository, ITicketRepository } from "../repositories/index.js";
 import { TicketPrioritySchema, TicketStatusSchema } from "../models/index.js";
 
 export function registerCreateSupportTicket(

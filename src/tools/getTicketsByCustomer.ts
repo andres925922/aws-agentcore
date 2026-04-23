@@ -11,11 +11,11 @@
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { InputSchema, InputType } from "./types.ts";
+import { InputSchema, InputType } from "./types.js";
 import {
     ICustomerRepository,
     ITicketRepository,
-} from "../repositories/index.ts";
+} from "../repositories/index.js";
 
 export function registerGetTicketsByCustomer(
     server: McpServer,

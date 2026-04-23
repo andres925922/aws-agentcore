@@ -9,7 +9,7 @@
  */
 
 import Database from "better-sqlite3";
-import { getDb } from "../utils/db/sqlite/index.ts";
+import { getDb } from "../utils/db/sqlite/index.js";
 import {
     Customer, CustomerSchema,
     Product, ProductSchema,

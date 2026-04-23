@@ -1,0 +1,23 @@
+{
+    "runtimeName": "customer-support-mcp-dev",
+    "image": {
+        "uri": "123456789012.dkr.ecr.eu-west-2.amazonaws.com/customer-support-mcp-dev-mcp-server:latest"
+    },
+    "executionRoleArn": "arn:aws:iam::123456789012:role/customer-support-mcp-dev-agentcore-execution-role",
+    "network": {
+        "port": 8000,
+        "path": "/mcp"
+    },
+    "environment": {
+        "PORT": "8000",
+        "DB_BACKEND": "dynamo",
+        "MEMORY_BACKEND": "dynamo",
+        "AWS_REGION": "eu-west-2",
+        "BEDROCK_MODEL_ID": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+        "BEDROCK_SYSTEM_PROMPT": "You are a helpful customer support assistant.",
+        "DYNAMODB_CUSTOMERS_TABLE": "customer-support-mcp-dev-customers",
+        "DYNAMODB_PRODUCTS_TABLE": "customer-support-mcp-dev-products",
+        "DYNAMODB_TICKETS_TABLE": "customer-support-mcp-dev-tickets",
+        "DYNAMODB_MEMORY_TABLE": "customer-support-mcp-dev-memory"
+    }
+}

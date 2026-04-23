@@ -11,7 +11,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { IProductRepository } from "../repositories/index.ts";
+import { IProductRepository } from "../repositories/index.js";
 import { computeWarrantyStatus } from "../utils/warranty.js";
 
 export function registerCheckWarrantyStatus(

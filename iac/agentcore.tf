@@ -34,16 +34,24 @@ resource "aws_iam_role_policy" "ecr_pull" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "ecr:GetDownloadUrlForLayer",
-        "ecr:BatchGetImage",
-        "ecr:BatchCheckLayerAvailability",
-        "ecr:GetAuthorizationToken",
-      ]
-      Resource = "*"
-    }]
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecr:GetAuthorizationToken",
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:BatchCheckLayerAvailability",
+        ]
+        Resource = aws_ecr_repository.mcp_server.arn
+      }
+    ]
   })
 }
 
@@ -57,27 +65,35 @@ resource "aws_iam_role_policy_attachment" "dynamodb" {
 
 # ─── CloudWatch Logs ──────────────────────────────────────────────────────────
 
+resource "aws_cloudwatch_log_group" "agentcore" {
+  name              = "/aws/bedrock-agentcore/${local.prefix}"
+  retention_in_days = var.cloudwatch_log_retention_days
+}
+
 resource "aws_iam_role_policy" "cloudwatch_logs" {
   name = "cloudwatch-logs"
   role = aws_iam_role.agentcore_execution.id
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "logs:CreateLogGroup",
-        "logs:CreateLogStream",
-        "logs:PutLogEvents",
-      ]
-      Resource = "arn:aws:logs:${var.aws_region}:*:*"
-    }]
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+        ]
+        Resource = [
+          "${aws_cloudwatch_log_group.agentcore.arn}:*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:DescribeLogStreams",
+        ]
+        Resource = aws_cloudwatch_log_group.agentcore.arn
+      }
+    ]
   })
-}
-
-# ─── Outputs ──────────────────────────────────────────────────────────────────
-
-output "agentcore_execution_role_arn" {
-  description = "Paste this into the deploy script as EXECUTION_ROLE_ARN"
-  value       = aws_iam_role.agentcore_execution.arn
 }

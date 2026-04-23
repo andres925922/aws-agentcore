@@ -1,130 +1,246 @@
-# Customer Support MCP Server — Phase 1
+# AWS AgentCore MCP Server
 
-A local MCP server written in TypeScript. No cloud, no agent framework, no magic.
-This is the foundation everything else will build on.
+TypeScript MCP server for customer support workflows with pluggable persistence:
 
-## What's in here
+- DB backends: sqlite or dynamodb
+- Memory backends: ram, sqlite, or dynamodb
+- Runtime target: Bedrock AgentCore
 
-```
-src/
-├── index.ts                   # Entry point — HTTP server + tool registration
-├── models/
-│   └── index.ts               # Zod schemas (single source of truth for all types)
-├── db/
-│   ├── client.ts              # SQLite wrapper (swapped for DynamoDB in Phase 2)
-│   └── seed.ts                # Populate DB with test data
-├── tools/
-│   ├── getCustomerProfile.ts  # Tool: get_customer_profile
-│   ├── checkWarrantyStatus.ts # Tool: check_warranty_status
-│   └── createSupportTicket.ts # Tool: create_support_ticket
-└── utils/
-    └── warranty.ts            # Pure function: compute warranty from a Product
+## Project structure
+
+```text
+iac/                 # Terraform infrastructure (DynamoDB, IAM, ECR, logs)
+agentcore/           # Bedrock AgentCore runtime config templates
+src/                 # MCP server source code
 ```
 
-## Quick start
+## Prerequisites
+
+Install these dependencies before running anything:
+
+1. Node.js 20+
+2. npm 10+
+3. Docker
+4. AWS CLI v2
+5. Terraform >= 1.6
+
+Quick checks:
+
+```bash
+node -v
+npm -v
+docker --version
+aws --version
+terraform -version
+```
+
+## Local app setup
 
 ```bash
 npm install
-npm run seed     # creates data/support.db with test customers + products
-npm run dev      # starts server on http://localhost:8000/mcp
+npm run build
 ```
 
-## Test data (after seed)
-
-| Customer     | ID suffix | Email              | Plan       |
-|--------------|-----------|--------------------|------------|
-| Alice Martínez | …000001 | alice@example.com  | pro        |
-| Bob Chen     | …000002   | bob@example.com    | enterprise |
-| Carol Dupont | …000003   | carol@example.com  | free       |
-
-| Product               | Owner | Warranty         |
-|-----------------------|-------|------------------|
-| ProBook Laptop 15     | Alice | ✅ Active (~4mo left) |
-| SoundMax Pro Headset  | Alice | ❌ Expired        |
-| CloudRack Server Unit | Bob   | ✅ Active (~24mo left) |
-
-## Tools
-
-### `get_customer_profile`
-Look up a customer by **id** or **email**. Returns profile + all their products.
-
-```json
-{ "email": "alice@example.com" }
-```
-
-### `check_warranty_status`
-Check if a product is under warranty, and how many days remain.
-
-```json
-{ "productId": "p0000000-0000-0000-0000-000000000001" }
-```
-
-### `create_support_ticket`
-Open a new ticket. Validates customer exists, and that the product belongs to them.
-
-```json
-{
-  "customerId": "c1a2b3c4-0000-0000-0000-000000000001",
-  "productId":  "p0000000-0000-0000-0000-000000000002",
-  "subject":    "Headset crackling noise after 1 year",
-  "description": "After about 12 months of use, the left ear started crackling. Happens at all volume levels.",
-  "priority":   "medium"
-}
-```
-
-## Connect to Claude Desktop
-
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "customer-support": {
-      "command": "npx",
-      "args": ["tsx", "/absolute/path/to/customer-support-mcp/src/index.ts"],
-      "env": { "PORT": "8000" }
-    }
-  }
-}
-```
-
-## Connect with copilot-cli:
+Run locally with sqlite:
 
 ```bash
-mkdir -p ~/.config/gh-copilot
-touch ~/.config/gh-copilot/mcp.json
+cp .env.example .env
+npm run seedSqlite
+npm run dev
 ```
+
+Server endpoint:
+
+```text
+http://0.0.0.0:8000/mcp
+```
+
+## AWS CLI profile setup
+
+Create a named profile (recommended):
+
+```bash
+aws configure --profile aws-agent-core
+```
+
+Set default profile for your terminal session:
+
+```bash
+export AWS_PROFILE=aws-agent-core
+```
+
+Optional explicit region:
+
+```bash
+export AWS_REGION=eu-west-2
+```
+
+Verify credentials and account:
+
+```bash
+aws sts get-caller-identity
+```
+
+## Terraform infrastructure
+
+All infrastructure is in [iac/main.tf](iac/main.tf), [iac/memory.tf](iac/memory.tf), [iac/ecr.tf](iac/ecr.tf), and [iac/agentcore.tf](iac/agentcore.tf).
+
+### What gets created
+
+1. DynamoDB tables: customers, products, tickets, memory
+2. IAM policy with least-privilege DynamoDB actions for this MCP
+3. ECR repository for the runtime image
+4. AgentCore execution role
+5. CloudWatch log group with retention policy
+
+### Recommended tfvars file
+
+Create [iac/terraform.tfvars](iac/terraform.tfvars):
+
+```hcl
+aws_region                    = "eu-west-2"
+project_name                  = "customer-support-mcp"
+environment                   = "dev"
+enable_point_in_time_recovery = true
+enable_deletion_protection    = false
+cloudwatch_log_retention_days = 30
+```
+
+### Install and apply infra
+
+```bash
+cd iac
+terraform init
+terraform fmt
+terraform validate
+terraform plan -out tfplan
+terraform apply tfplan
+```
+
+### Export outputs to app env
+
+After apply:
+
+```bash
+terraform output -raw env_block
+```
+
+Copy that output into your [.env](.env) file.
+
+### Seed DynamoDB data
+
+With infra already applied and .env configured:
+
+```bash
+npm run seedDynamo
+```
+
+### Destroy infra
+
+Normal destroy:
+
+```bash
+cd iac
+terraform destroy
+```
+
+If deletion protection was enabled for DynamoDB, set it to false in tfvars first and apply:
+
+```bash
+cd iac
+terraform apply -var="enable_deletion_protection=false"
+terraform destroy
+```
+
+## Bedrock AgentCore config folder
+
+The folder [agentcore/README.md](agentcore/README.md) contains templates and instructions to configure runtime deployment inputs.
+
+Files:
+
+1. [agentcore/.env.agentcore.example](agentcore/.env.agentcore.example)
+2. [agentcore/runtime-config.example.json](agentcore/runtime-config.example.json)
+3. [agentcore/README.md](agentcore/README.md)
+
+## Useful npm scripts
+
+```bash
+npm run dev
+npm run build
+npm run start
+npm run typecheck
+npm run seedSqlite
+npm run seedDynamo
+```
+
+## Invoke models with context (/chat)
+
+This project now exposes a Bedrock chat orchestration endpoint:
+
+```text
+POST /chat
+```
+
+The endpoint:
+
+1. Loads per-user memory context automatically.
+2. Sends that context to your selected Bedrock model.
+3. Lets the model call business tools (customer profile, warranty, ticket creation, memory tools).
+4. Returns the final assistant reply.
+
+Required environment variables:
+
+```bash
+AWS_REGION=eu-west-2
+BEDROCK_MODEL_ID=anthropic.claude-3-5-sonnet-20241022-v2:0
+```
+
+Optional:
+
+```bash
+BEDROCK_SYSTEM_PROMPT="You are a helpful customer support assistant"
+```
+
+Example request:
+
+```bash
+curl -X POST http://localhost:8000/chat \
+	-H "Content-Type: application/json" \
+	-d '{
+		"userId": "andres",
+		"message": "Revisa la garantia del producto p0000000-0000-0000-0000-000000000001 y si esta vencida abre un ticket",
+		"rememberResponse": true
+	}'
+```
+
+Example response shape:
 
 ```json
 {
-  "servers": {
-    "customer-support": {
-      "url": "http://localhost:8000/mcp"
-    }
-  }
+	"modelId": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+	"reply": "...",
+	"stopReason": "end_turn",
+	"toolCalls": [
+		{
+			"name": "check_warranty_status",
+			"input": {
+				"productId": "..."
+			}
+		}
+	]
 }
-``` 
+```
 
-Or use a generic MCP client pointed at `http://localhost:8000/mcp`.
+## Build the image
+```bash
+docker build -f src/Dockerfile -t customer-service-mcp .
+```
 
-## Phase 2 — what changes?
+## Push the image to ECR
+```bash
+aws sts get-caller-identity
 
-Only `src/db/client.ts`. Every function signature stays identical — you swap
-the SQLite calls for `@aws-sdk/client-dynamodb` calls. Models, tools, and
-utils are untouched.
-
-## Key design decisions
-
-**Why Zod everywhere?**  
-Zod schemas define the shape once. TypeScript types, MCP input schemas, and
-DB row validation all derive from the same definition. A mismatch surfaces at
-compile time, not in production.
-
-**Why stateless HTTP transport?**  
-Stateless = one transport instance per request. This is simpler locally and
-exactly what AgentCore Runtime expects. When you need multi-turn interactions
-(elicitation, streaming progress) you'd switch to stateful mode — but not yet.
-
-**Why 8000/mcp?**  
-AgentCore Runtime expects MCP servers at `0.0.0.0:8000/mcp`. Building to that
-spec now means zero changes to the server address in Phase 4.
+aws ecr get-login-password --region eu-west-2 --profile default | docker login --username AWS --password-stdin <account_id>.dkr.ecr.eu-west-2.amazonaws.com
+docker tag customer-service-mcp:latest <account_id>.dkr.ecr.eu-west-2.amazonaws.com/customer-service-mcp:latest
+docker push <account_id>.dkr.ecr.eu-west-2.amazonaws.com/customer-service-mcp:latest
+```	

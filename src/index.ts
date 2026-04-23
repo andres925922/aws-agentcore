@@ -32,6 +32,7 @@ import { registerCreateSupportTicket } from "./tools/createSupportTicket.js";
 import { registerIdentifySession } from "./tools/identifySession.js";
 import { registerGetSessionContext } from "./tools/getSessionContext.js";
 import { registerSaveNote } from "./tools/saveNote.js";
+import { BedrockChatOrchestrator, ChatRequest } from "./chat/bedrockChat.js";
 
 // ─── Repository backend ───────────────────────────────────────────────────────
 
@@ -47,6 +48,8 @@ const memoryStore =
     MEMORY_BACKEND === "dynamo" ? createDynamoMemoryStore() :
         MEMORY_BACKEND === "sqlite" ? createSqliteMemoryStore() :
             new RamMemoryStore();
+
+const chatOrchestrator = new BedrockChatOrchestrator(repos, memoryStore);
 
 // ─── MCP server ───────────────────────────────────────────────────────────────
 
@@ -66,25 +69,64 @@ registerSaveNote(server, memoryStore);
 
 const PORT = parseInt(process.env.PORT ?? "8000", 10);
 
-const httpServer = http.createServer(async (req, res) => {
-    if (req.url !== "/mcp") { res.writeHead(404).end("Not found"); return; }
-    if (req.method !== "POST") { res.writeHead(405).end("Method not allowed"); return; }
-
+async function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(chunk);
     const body = Buffer.concat(chunks).toString("utf-8");
+    if (!body) return {};
+    return JSON.parse(body);
+}
 
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-    await server.connect(transport);
-    await transport.handleRequest(req, res, JSON.parse(body));
-    await transport.close();
+function writeJson(res: http.ServerResponse, statusCode: number, payload: unknown): void {
+    const text = JSON.stringify(payload, null, 2);
+    res.writeHead(statusCode, { "content-type": "application/json; charset=utf-8" });
+    res.end(text);
+}
+
+const httpServer = http.createServer(async (req, res) => {
+    try {
+        if (req.url === "/chat") {
+            if (req.method !== "POST") { res.writeHead(405).end("Method not allowed"); return; }
+            const body = await readJsonBody(req);
+            const chatInput = body as ChatRequest;
+            const result = await chatOrchestrator.run(chatInput);
+            writeJson(res, 200, result);
+            return;
+        }
+
+        if (req.url !== "/mcp") { res.writeHead(404).end("Not found"); return; }
+        if (req.method !== "POST") { res.writeHead(405).end("Method not allowed"); return; }
+
+        const body = await readJsonBody(req);
+        const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+        await server.connect(transport);
+        await transport.handleRequest(req, res, body as object);
+        await transport.close();
+    } catch (error) {
+        const asAny = error as any;
+        const message = error instanceof Error ? error.message : "Unexpected error";
+        const name = error instanceof Error ? error.name : "Error";
+        const metadata = asAny?.$metadata
+            ? {
+                statusCode: asAny.$metadata.httpStatusCode,
+                requestId: asAny.$metadata.requestId,
+            }
+            : undefined;
+
+        writeJson(res, 500, {
+            error: message,
+            errorType: name,
+            ...(metadata ? { metadata } : {}),
+        });
+    }
 });
 
 httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`\n🚀 Customer Support MCP Server v4`);
     console.log(`   DB backend:     ${DB_BACKEND}`);
     console.log(`   Memory backend: ${MEMORY_BACKEND}`);
-    console.log(`   Listening:      http://0.0.0.0:${PORT}/mcp\n`);
+    console.log(`   MCP endpoint:   http://0.0.0.0:${PORT}/mcp`);
+    console.log(`   Chat endpoint:  http://0.0.0.0:${PORT}/chat\n`);
 });
 
 process.on("SIGINT", () => { httpServer.close(); process.exit(0); });

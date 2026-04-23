@@ -5,9 +5,10 @@
 # TTL attribute: DynamoDB automatically deletes rows after `ttl` (Unix epoch).
 
 resource "aws_dynamodb_table" "memory" {
-  name         = "${local.prefix}-memory"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "userId"
+  name                        = "${local.prefix}-memory"
+  billing_mode                = "PAY_PER_REQUEST"
+  hash_key                    = "userId"
+  deletion_protection_enabled = var.enable_deletion_protection
 
   attribute {
     name = "userId"
@@ -22,39 +23,14 @@ resource "aws_dynamodb_table" "memory" {
     enabled        = true
   }
 
-  tags = local.common_tags
-}
+  server_side_encryption {
+    enabled = true
+  }
 
-# Add memory table permissions to the existing MCP server IAM policy
-# We create a separate inline policy to keep main.tf clean.
-resource "aws_iam_policy" "memory_access" {
-  name        = "${local.prefix}-memory-policy"
-  description = "DynamoDB permissions for the memory store"
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid    = "MemoryTableAccess"
-      Effect = "Allow"
-      Action = [
-        "dynamodb:GetItem",
-        "dynamodb:PutItem",
-        "dynamodb:UpdateItem",
-      ]
-      Resource = [aws_dynamodb_table.memory.arn]
-    }]
-  })
+  point_in_time_recovery {
+    enabled = var.enable_point_in_time_recovery
+  }
 
   tags = local.common_tags
 }
 
-# Attach memory policy to the AgentCore execution role
-resource "aws_iam_role_policy_attachment" "memory" {
-  role       = aws_iam_role.agentcore_execution.name
-  policy_arn = aws_iam_policy.memory_access.arn
-}
-
-output "memory_table_name" {
-  description = "DynamoDB memory table name — add to .env as DYNAMODB_MEMORY_TABLE"
-  value       = aws_dynamodb_table.memory.name
-}

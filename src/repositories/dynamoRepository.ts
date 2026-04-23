@@ -13,7 +13,7 @@ import {
     QueryCommand,
 } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
-import { getDynamoClient, getTableNames } from "../utils/db/dynamodb/index.ts";
+import { getDynamoClient, getTableNames } from "../utils/db/dynamodb/index.js";
 import {
     Customer, CustomerSchema,
     Product, ProductSchema,
@@ -62,7 +62,7 @@ export class DynamoCustomerRepository implements ICustomerRepository {
         await this.client.send(
             new PutItemCommand({
                 TableName: this.tableName,
-                Item: marshall(customer),
+                Item: marshall(customer, { removeUndefinedValues: true }),
                 ConditionExpression: "attribute_not_exists(id)",
             })
         ).catch((e) => {
@@ -103,7 +103,7 @@ export class DynamoProductRepository implements IProductRepository {
         await this.client.send(
             new PutItemCommand({
                 TableName: this.tableName,
-                Item: marshall(product),
+                Item: marshall(product, { removeUndefinedValues: true }),
                 ConditionExpression: "attribute_not_exists(id)",
             })
         ).catch((e) => {
@@ -163,7 +163,7 @@ export async function seedCustomer(customer: Customer): Promise<void> {
     await client.send(
         new PutItemCommand({
             TableName: tableNames.customers,
-            Item: marshall(customer),
+            Item: marshall(customer, { removeUndefinedValues: true }),
             ConditionExpression: "attribute_not_exists(id)",
         })
     ).catch((e) => {
@@ -177,7 +177,7 @@ export async function seedProduct(product: Product): Promise<void> {
     await client.send(
         new PutItemCommand({
             TableName: tableNames.products,
-            Item: marshall(product),
+            Item: marshall(product, { removeUndefinedValues: true }),
             ConditionExpression: "attribute_not_exists(id)",
         })
     ).catch((e) => {
